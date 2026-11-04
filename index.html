@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOM live</title>
+<style>
+:root{
+  --bg:#0b0d11; --panel:#11141a; --panel2:#151922; --line:#1e232d; --text:#d5dbe8; --muted:#6c7689;
+  --ask:#e5634d; --bid:#2fb59a; --wall:#f2b84b; --pull:#c774ff; --exec:#ffffff;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 var(--sans)}
+header{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font:600 14px var(--sans);margin:0 6px 0 0;letter-spacing:.02em}
+label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+input,select,button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 8px;font:12px var(--mono)}
+input{width:110px;text-transform:uppercase}
+input.num{width:78px;text-transform:none}
+.muted{color:var(--muted)}
+button{cursor:pointer;font-family:var(--sans)}
+button:hover,select:hover{border-color:#34405a}
+:focus-visible{outline:2px solid var(--wall);outline-offset:1px}
+#status{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+#dot{width:9px;height:9px;border-radius:50%;background:#555}
+#dot.ok{background:var(--bid)} #dot.warn{background:var(--wall)} #dot.bad{background:var(--ask)}
+main{display:grid;grid-template-columns:minmax(330px,440px) 1fr;gap:12px;padding:12px 14px;align-items:start}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+#ladder{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
+.row{position:relative;display:grid;grid-template-columns:96px 1fr;height:20px;align-items:center;font:12px/20px var(--mono)}
+.row .bar{position:absolute;left:96px;top:2px;bottom:2px;width:calc((100% - 96px) * var(--w,0));border-radius:0 2px 2px 0;opacity:.32;transition:width .12s linear}
+.row.ask .bar{background:var(--ask)} .row.bid .bar{background:var(--bid)}
+.row .px{position:relative;padding-left:10px}
+.row.ask .px{color:#f1a798} .row.bid .px{color:#8fdcc9}
+.row .sz{position:relative;text-align:right;padding-right:10px;font-variant-numeric:tabular-nums}
+.row.wall .sz{color:var(--wall);font-weight:700}
+.row.wall::before{content:"";position:absolute;left:0;top:1px;bottom:1px;width:3px;background:var(--wall)}
+@keyframes fx{from{background:rgba(255,255,255,.6)}to{background:rgba(255,255,255,0)}}
+@keyframes fp{from{background:rgba(199,116,255,.75)}to{background:rgba(199,116,255,0)}}
+.row.f-ex{animation:fx .7s ease-out}
+.row.f-pl{animation:fp 1s ease-out}
+#mid{display:grid;grid-template-columns:96px 1fr;align-items:center;height:42px;background:var(--panel2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+#last{font:700 17px var(--mono);padding-left:10px}
+#last.buy{color:var(--bid)} #last.sell{color:var(--ask)}
+#midr{padding:0 10px;display:flex;flex-direction:column;gap:5px;font:11px var(--mono);color:var(--muted)}
+#imb{height:6px;background:var(--ask);border-radius:3px;overflow:hidden}
+#imb i{display:block;height:100%;width:50%;background:var(--bid);transition:width .15s linear}
+aside{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.card h2{font:600 12px var(--sans);margin:0 0 8px;color:var(--muted);letter-spacing:.03em}
+.kv{display:grid;grid-template-columns:1fr auto;gap:5px 12px;font:12px var(--mono)}
+.kv span:nth-child(odd){color:var(--muted);font-family:var(--sans)}
+.buy{color:var(--bid)} .sell{color:var(--ask)} .pull{color:var(--pull)} .big{color:var(--exec)}
+ul{list-style:none;margin:0;padding:0;font:12px var(--mono)}
+li{display:grid;grid-template-columns:62px 1fr auto;gap:8px;padding:2px 0;border-bottom:1px solid #161a22}
+li:last-child{border-bottom:0}
+li .t{color:var(--muted)}
+li.tr-big{font-weight:700}
+li.empty{display:block;color:var(--muted);font:12px var(--sans);border-bottom:0}
+details{grid-column:1/-1}
+details summary{cursor:pointer;font:600 12px var(--sans);color:var(--muted)}
+details p{margin:8px 0 0;color:var(--text);font:12.5px/1.55 var(--sans);max-width:78ch}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+@media (prefers-reduced-motion:reduce){.row.f-ex,.row.f-pl{animation-duration:.01s}.row .bar,#imb i{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>DOM live</h1>
+  <label>Simbol <input id="sym" value="BTCUSDT" spellcheck="false" autocomplete="off"></label>
+  <label>Piață <select id="mkt"><option value="fut">Futures USDT-M</option><option value="spot">Spot</option></select></label>
+  <label>Niveluri <select id="rows"><option>10</option><option>15</option><option>20</option></select></label>
+  <label>Mărime <select id="unit"><option value="usd">în $</option><option value="base">în monedă</option></select></label>
+  <label title="Cât trebuie să fie un ordin ca să apară în Evenimente mari. Gol = automat. Merge și 50k, 2m.">Prag eveniment <input id="thr" class="num" placeholder="auto" inputmode="text" autocomplete="off"></label>
+  <button id="pause">Pauză</button>
+  <div id="status"><span id="dot"></span><span id="stxt">conectare…</span></div>
+</header>
+<main>
+  <section id="ladder" aria-label="Order book"></section>
+  <aside>
+    <div class="card"><h2>Ultimele 60 s</h2>
+      <div class="kv">
+        <span>Cumpărat agresiv (10 s)</span><span id="b10" class="buy">–</span>
+        <span>Vândut agresiv (10 s)</span><span id="s10" class="sell">–</span>
+        <span>Delta (10 s)</span><span id="d10">–</span>
+        <span>Delta (60 s)</span><span id="d60">–</span>
+        <span>Tranzacții pe secundă</span><span id="tps">–</span>
+        <span>Ordine din carte executate</span><span id="exec">–</span>
+        <span>Ordine din carte retrase</span><span id="pulled" class="pull">–</span>
+        <span>Din care retrase</span><span id="pct">–</span>
+      </div>
+    </div>
+    <div class="card"><h2>Evenimente mari</h2><ul id="events"><li class="empty">Aștept date…</li></ul></div>
+    <div class="card"><h2>Tranzacții (tape)</h2><ul id="tape"><li class="empty">Aștept date…</li></ul></div>
+    <details>
+      <summary>Cum se citește</summary>
+      <p><span class="sw" style="background:var(--ask)"></span>Roșu: ordine de vânzare (ask), deasupra prețului. <span class="sw" style="background:var(--bid)"></span>Verde: ordine de cumpărare (bid), sub preț. Lungimea barei e mărimea ordinelor de la acel preț.<br>
+      <span class="sw" style="background:var(--wall)"></span>Marcaj galben: „perete", un nivel mult mai mare decât restul.<br>
+      <span class="sw" style="background:#fff"></span>Licărire albă: volumul a scăzut pentru că s-a <b>executat</b> (a venit o tranzacție la acel preț). <span class="sw" style="background:var(--pull)"></span>Licărire mov: volumul a scăzut fără tranzacție, deci ordinul a fost <b>retras</b>.<br>
+      La „RETRAS", cifra mică e cât a stat ordinul acolo înainte să fie retras (≥ = era deja în carte la conectare). Un perete care apare și dispare fără să fie lovit e doar o intenție, nu o forță. Un perete care e lovit și ține (albul licărește, dar mărimea revine) absoarbe. Prețul se mișcă când se golește un nivel, nu când se adaugă ordine. „Delta" = cât s-a cumpărat agresiv minus cât s-a vândut agresiv.</p>
+    </details>
+  </aside>
+</main>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('dom.' + k); return v === null ? d : v; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('dom.' + k, v); }catch(e){} }
+};
+const cfg = { sym: store.get('sym', 'BTCUSDT').toUpperCase(), mkt: store.get('mkt', 'fut'), rows: +store.get('rows', 15) || 15, unit: store.get('unit', 'usd'), thr: +store.get('thr', 0) || 0 };
+
+const S = {
+  bids: [], asks: [], dec: 2, tick: 0, last: null, lastSide: null,
+  trades: [], recent: [], pending: [], rise: new Map(), win: [], events: [], tape: [],
+  msgs: 0, lastMsg: 0, th: Infinity, paused: false, rowMap: new Map(), askRows: [], bidRows: [],
+  socks: [], gen: 0, retry: 0, retryT: 0, connectedAt: 0, nDepth: 0, nTrade: 0
+};
+window.__dom = { S, cfg };  // pentru depanare
+
+// 3 cifre semnificative, aceeași formă peste tot: 999, 1.00K, 12.3K, 456K, 1.20M
+const fmt = n => {
+  const r = +Math.abs(n).toPrecision(3), sg = n < 0 ? '-' : '';
+  if (r === 0) return '0';
+  let d = 1, s = '';
+  if (r >= 1e9){ d = 1e9; s = 'B'; } else if (r >= 1e6){ d = 1e6; s = 'M'; } else if (r >= 1e3){ d = 1e3; s = 'K'; }
+  const v = r / d;
+  const dec = v >= 100 ? 0 : v >= 10 ? 1 : v >= 1 ? 2 : Math.min(8, 2 - Math.floor(Math.log10(v)));
+  return sg + v.toFixed(dec) + s;
+};
+const usd = n => '$' + fmt(n);
+const hhmmss = t => new Date(t).toTimeString().slice(0, 8);
+const decimals = x => { const s = String(+x); const i = s.indexOf('.'); return i < 0 ? 0 : s.length - i - 1; };
+
+// ---------- conexiune ----------
+function setStatus(text, cls){ $('#stxt').textContent = text; $('#dot').className = cls || ''; }
+
+function resetData(){
+  Object.assign(S, { bids: [], asks: [], last: null, lastSide: null, trades: [], recent: [], pending: [], win: [], events: [], tape: [], rise: new Map(), th: Infinity, decSet: false, dec: 2, firstDepth: 0 });
+  buildLadder();
+  dirty.panel = true;
+}
+
+// Futures: Binance a împărțit fluxurile pe căi separate. Cartea vine de pe /public, tranzacțiile de pe /market
+// (pe calea veche /stream cartea mai vine, dar aggTrade nu). Spot: o singură conexiune combinată.
+function endpoints(sym){
+  return cfg.mkt === 'fut'
+    ? ['wss://fstream.binance.com/public/stream?streams=' + sym + '@depth20@100ms', 'wss://fstream.binance.com/market/stream?streams=' + sym + '@aggTrade']
+    : ['wss://stream.binance.com:9443/stream?streams=' + sym + '@depth20@100ms/' + sym + '@aggTrade'];
+}
+
+function closeAll(){
+  S.gen++;  // apelurile întârziate ale socket-urilor vechi se ignoră
+  for (const w of S.socks){ w.onopen = w.onmessage = w.onerror = w.onclose = null; try{ w.close(); }catch(e){} }
+  S.socks = [];
+}
+
+function onMessage(ev){
+  S.lastMsg = Date.now(); S.msgs++;
+  let m; try{ m = JSON.parse(ev.data); }catch(e){ return; }
+  const d = m.data || m, st = m.stream || '';
+  if (st.endsWith('@aggTrade') || d.e === 'aggTrade'){ S.nTrade++; onTrade(d); } else { S.nDepth++; onDepth(d); }
+}
+
+function connect(){
+  clearTimeout(S.retryT);
+  closeAll();
+  resetData();
+  S.msgs = 0; S.lastMsg = 0; S.nDepth = 0; S.nTrade = 0; S.connectedAt = 0;
+  setStatus('conectare…', 'warn');
+  const gen = S.gen, s = cfg.sym.toLowerCase();
+  const lost = () => {
+    if (gen !== S.gen) return;
+    closeAll();
+    setStatus('deconectat, reîncerc…', 'bad');
+    S.retryT = setTimeout(connect, Math.min(10000, 500 * 2 ** (S.retry++)));
+  };
+  for (const url of endpoints(s)){
+    let ws;
+    try{ ws = new WebSocket(url); }
+    catch(e){ setStatus('nu pot deschide conexiunea', 'bad'); return; }
+    S.socks.push(ws);
+    ws.onopen = () => { if (gen !== S.gen) return; S.retry = 0; S.connectedAt = S.connectedAt || Date.now(); setStatus('conectat, aștept date…', 'warn'); };
+    ws.onmessage = onMessage;
+    ws.onerror = () => { if (gen === S.gen) setStatus('eroare de conexiune', 'bad'); };
+    ws.onclose = lost;
+  }
+}
+
+// ---------- date ----------
+function onTrade(d){
+  const p = +d.p, q = +d.q, t = Date.now(), side = d.m ? 'sell' : 'buy';  // m = cumpărătorul e pasiv => agresorul vinde
+  if (!(p > 0) || !(q > 0)) return;
+  const tr = { t, p, q, side, rem: q };
+  S.trades.push(tr); S.recent.push(tr);
+  S.last = p; S.lastSide = side;
+  S.tape.unshift(tr); if (S.tape.length > 26) S.tape.pop();
+  if (p * q >= S.th) pushEvent({ t, kind: 'big', side, p, n: p * q });
+  dirty.panel = true; scheduleRender();
+}
+
+function onDepth(d){
+  const rb = d.bids || d.b, ra = d.asks || d.a;
+  if (!rb || !ra) return;
+  const bids = rb.map(x => [+x[0], +x[1]]).filter(x => x[1] > 0).sort((a, b) => b[0] - a[0]);
+  const asks = ra.map(x => [+x[0], +x[1]]).filter(x => x[1] > 0).sort((a, b) => a[0] - b[0]);
+  if (!bids.length || !asks.length) return;
+  let dec = 0; for (const x of rb.slice(0, 5)) dec = Math.max(dec, decimals(x[0])); for (const x of ra.slice(0, 5)) dec = Math.max(dec, decimals(x[0]));
+  if (!S.decSet || dec > S.dec){ S.dec = dec; S.decSet = true; }
+  let tick = Infinity; for (let i = 1; i < asks.length; i++) tick = Math.min(tick, asks[i][0] - asks[i - 1][0]);
+  if (isFinite(tick) && tick > 0) S.tick = +tick.toFixed(Math.max(dec, 0) + 2);
+  const now = Date.now();
+  if (S.bids.length){ diffSide(S.asks, asks, 'ask', now); diffSide(S.bids, bids, 'bid', now); }
+  else S.firstDepth = now;
+  S.bids = bids; S.asks = asks;
+  if (S.last === null){ S.last = (bids[0][0] + asks[0][0]) / 2; }
+  scheduleRender();
+}
+
+// Compară două instantanee ale unei părți din carte. Doar nivelurile aflate în ambele ferestre (20 de niveluri) se compară,
+// ca un nivel care iese din fereastră să nu fie luat drept ordin retras.
+function diffSide(prev, cur, side, now){
+  const pm = new Map(prev), cm = new Map(cur);
+  const farP = prev[prev.length - 1][0], farC = cur[cur.length - 1][0];
+  const inside = side === 'ask' ? (p => p <= Math.min(farP, farC)) : (p => p >= Math.max(farP, farC));
+  const prices = new Set([...pm.keys(), ...cm.keys()]);
+  for (const p of prices){
+    if (!inside(p)) continue;
+    const a = pm.get(p) || 0, b = cm.get(p) || 0, dq = b - a;
+    if (dq < 0) S.pending.push({ t: now, p, side, qty: -dq, born: S.rise.get(side + ':' + p) });  // „născut" se ia acum, înainte ca o refacere a nivelului să-l mute
+    else if (dq > 0 && (a === 0 || dq >= 0.5 * a)) S.rise.set(side + ':' + p, now);
+  }
+}
+
+// La 300 ms după o scădere se decide: câtă parte a fost executată (tranzacții la același preț, de partea potrivită) și câtă retrasă.
+function settle(){
+  const now = Date.now();
+  while (S.recent.length && S.recent[0].t < now - 4000) S.recent.shift();
+  while (S.trades.length && S.trades[0].t < now - 120000) S.trades.shift();
+  while (S.win.length && S.win[0].t < now - 60000) S.win.shift();
+  if (S.rise.size > 4000){ for (const [k, v] of S.rise) if (v < now - 60000) S.rise.delete(k); }
+  while (S.pending.length && now - S.pending[0].t >= 300){
+    const r = S.pending.shift();
+    const want = r.side === 'ask' ? 'buy' : 'sell';
+    let need = r.qty;
+    for (const tr of S.recent){
+      if (tr.rem <= 0 || tr.p !== r.p || tr.side !== want || Math.abs(tr.t - r.t) > 400) continue;
+      const u = Math.min(need, tr.rem); tr.rem -= u; need -= u;
+      if (need <= r.qty * 1e-9) { need = 0; break; }
+    }
+    const exec = r.qty - need, pulled = need;
+    S.win.push({ t: r.t, side: r.side, exec: exec * r.p, pulled: pulled * r.p });
+    const row = S.rowMap.get(r.p);
+    if (row){ flash(row, pulled > exec ? 'f-pl' : 'f-ex'); }
+    if (pulled * r.p >= S.th){
+      // vârsta = de la ultima mărire mare a nivelului; dacă nivelul era deja acolo la conectare, vârsta e doar o limită inferioară
+      const born = r.born;
+      const age = born ? (r.t - born) / 1000 : (r.t - (S.firstDepth || r.t)) / 1000;
+      pushEvent({ t: r.t, kind: 'pull', side: r.side, p: r.p, n: pulled * r.p, age, atLeast: !born });
+    }
+    dirty.panel = true;
+  }
+}
+
+function pushEvent(e){ S.events.unshift(e); if (S.events.length > 12) S.events.pop(); dirty.panel = true; }
+
+// ---------- afișare ----------
+const dirty = { ladder: false, panel: false };
+let raf = 0;
+function scheduleRender(){ dirty.ladder = true; if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (!S.paused) renderLadder(); }); }
+
+function buildLadder(){
+  const N = cfg.rows, el = $('#ladder');
+  el.textContent = '';
+  S.askRows = []; S.bidRows = [];
+  const mk = side => {
+    const r = document.createElement('div'); r.className = 'row ' + side;
+    r.innerHTML = '<div class="bar"></div><span class="px"></span><span class="sz"></span>';
+    r.addEventListener('animationend', () => r.classList.remove('f-ex', 'f-pl'));
+    return r;
+  };
+  for (let i = 0; i < N; i++){ const r = mk('ask'); el.appendChild(r); S.askRows.push(r); }
+  const mid = document.createElement('div'); mid.id = 'mid';
+  mid.innerHTML = '<span id="last">–</span><div id="midr"><span id="spr">–</span><div id="imb" title="Bid vs ask, primele 10 niveluri"><i></i></div></div>';
+  el.appendChild(mid);
+  for (let i = 0; i < N; i++){ const r = mk('bid'); el.appendChild(r); S.bidRows.push(r); }
+}
+
+function flash(row, cls){ row.classList.remove('f-ex', 'f-pl'); void row.offsetWidth; row.classList.add(cls); }
+
+function renderLadder(){
+  dirty.ladder = false;
+  const N = cfg.rows, asks = S.asks.slice(0, N), bids = S.bids.slice(0, N);
+  if (!asks.length || !bids.length) return;
+  const val = (p, q) => cfg.unit === 'usd' ? p * q : q;
+  const notionals = asks.concat(bids).map(x => x[0] * x[1]).sort((a, b) => a - b);
+  const q = (arr, f) => arr[Math.min(arr.length - 1, Math.floor(f * arr.length))] || 1;
+  const medN = q(notionals, 0.5);
+  // prag de eveniment: cel puțin 8x nivelul mediu și cel puțin cât cele mai mari ~10% niveluri din ecran (sau valoarea ta, dacă ai pus una)
+  S.th = cfg.thr > 0 ? cfg.thr : Math.max(8 * medN, q(notionals, 0.9));
+  const vals = asks.concat(bids).map(x => val(x[0], x[1]));
+  const sorted = vals.slice().sort((a, b) => a - b);
+  const med = q(sorted, 0.5);
+  // bara se raportează la nivelurile obișnuite, nu la cel mai mare: un perete uriaș nu mai strivește restul cărții
+  const ref = Math.max(q(sorted, 0.9) * 1.25, med * 2);
+  const wallMin = Math.max(4 * med, q(sorted, 0.85));
+  S.rowMap = new Map();
+  const put = (row, lvl) => {
+    row.querySelector('.px').textContent = lvl[0].toFixed(S.dec);
+    const v = val(lvl[0], lvl[1]);
+    row.querySelector('.sz').textContent = cfg.unit === 'usd' ? usd(v) : fmt(v);
+    row.style.setProperty('--w', Math.min(1, v / ref).toFixed(3));
+    row.classList.toggle('wall', v >= wallMin);
+    S.rowMap.set(lvl[0], row);
+  };
+  for (let i = 0; i < N; i++){
+    if (asks[N - 1 - i]) put(S.askRows[i], asks[N - 1 - i]);
+    if (bids[i]) put(S.bidRows[i], bids[i]);
+  }
+  const last = $('#last');
+  last.textContent = (S.last ?? (asks[0][0] + bids[0][0]) / 2).toFixed(S.dec);
+  last.className = S.lastSide || '';
+  const spread = asks[0][0] - bids[0][0];
+  $('#spr').textContent = 'spread ' + spread.toFixed(S.dec) + (S.tick ? ' (' + Math.round(spread / S.tick) + ' tick)' : '');
+  const bsum = bids.slice(0, 10).reduce((s, x) => s + x[0] * x[1], 0), asum = asks.slice(0, 10).reduce((s, x) => s + x[0] * x[1], 0);
+  $('#imb i').style.width = (100 * bsum / (bsum + asum || 1)).toFixed(1) + '%';
+}
+
+function renderPanel(){
+  dirty.panel = false;
+  const now = Date.now();
+  let b10 = 0, s10 = 0, b60 = 0, s60 = 0, n5 = 0;
+  for (const t of S.trades){
+    const n = t.p * t.q, age = now - t.t;
+    if (age <= 60000){ if (t.side === 'buy') b60 += n; else s60 += n; }
+    if (age <= 10000){ if (t.side === 'buy') b10 += n; else s10 += n; }
+    if (age <= 5000) n5++;
+  }
+  $('#b10').textContent = usd(b10); $('#s10').textContent = usd(s10);
+  const d10 = b10 - s10, d60 = b60 - s60;
+  const dd = (el, v) => { el.textContent = (v >= 0 ? '+' : '−') + usd(Math.abs(v)); el.className = v >= 0 ? 'buy' : 'sell'; };
+  dd($('#d10'), d10); dd($('#d60'), d60);
+  $('#tps').textContent = (n5 / 5).toFixed(1);
+  let ex = 0, pl = 0; for (const w of S.win){ ex += w.exec; pl += w.pulled; }
+  $('#exec').textContent = usd(ex); $('#pulled').textContent = usd(pl);
+  $('#pct').textContent = ex + pl > 0 ? (100 * pl / (ex + pl)).toFixed(0) + '%' : '–';
+
+  const ev = $('#events');
+  if (!S.events.length){ ev.innerHTML = '<li class="empty">Încă nimic peste prag. Pragul e de 8 ori nivelul mediu din carte' + (isFinite(S.th) ? ' (acum ' + usd(S.th) + ')' : '') + '.</li>'; }
+  else ev.innerHTML = S.events.map(e => {
+    const side = e.side === 'ask' ? 'sell' : e.side === 'bid' ? 'buy' : e.side;
+    const what = e.kind === 'pull'
+      ? '<span class="pull">RETRAS ' + (e.side === 'ask' ? 'ask' : 'bid') + '</span> ' + e.p.toFixed(S.dec) + (e.age != null ? ' <span class="muted">' + (e.atLeast ? '≥' : '') + Math.max(0, e.age).toFixed(1) + 's</span>' : '')
+      : '<span class="big">' + (e.side === 'buy' ? 'CUMPĂRAT' : 'VÂNDUT') + '</span> ' + e.p.toFixed(S.dec);
+    return '<li><span class="t">' + hhmmss(e.t) + '</span><span>' + what + '</span><span class="' + (e.kind === 'pull' ? 'pull' : side) + '">' + usd(e.n) + '</span></li>';
+  }).join('');
+
+  const tp = $('#tape');
+  if (!S.tape.length) tp.innerHTML = '<li class="empty">Aștept tranzacții…</li>';
+  else tp.innerHTML = S.tape.map(t => '<li class="' + (t.p * t.q >= S.th ? 'tr-big' : '') + '"><span class="t">' + hhmmss(t.t) + '</span><span class="' + t.side + '">' + t.p.toFixed(S.dec) + '</span><span class="' + t.side + '">' + usd(t.p * t.q) + '</span></li>').join('');
+}
+
+function tickStatus(){
+  const now = Date.now();
+  if (!S.socks.length || S.socks.some(w => w.readyState !== 1)) return;
+  if (S.paused){ setStatus('pauză (datele curg în fundal)', 'warn'); return; }
+  const gap = (now - (S.lastMsg || S.connectedAt)) / 1000, up = (now - S.connectedAt) / 1000;
+  if (!S.msgs && gap > 6) setStatus('nicio dată de ' + gap.toFixed(0) + ' s: verifică simbolul (ex. BTCUSDT) și piața', 'bad');
+  else if (S.msgs && gap > 3) setStatus('fără mesaje de ' + gap.toFixed(0) + ' s', 'warn');
+  else if (S.nDepth && !S.nTrade && up > 20) setStatus('cartea vine, tranzacțiile nu (simbol lent sau flux blocat): executat/retras nu e de încredere', 'warn');
+  else if (S.msgs) setStatus('live · ' + cfg.sym + ' · ' + (cfg.mkt === 'fut' ? 'futures' : 'spot'), 'ok');
+}
+
+// ---------- comenzi ----------
+function applyControls(){
+  cfg.sym = ($('#sym').value || 'BTCUSDT').trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || 'BTCUSDT';
+  cfg.mkt = $('#mkt').value; cfg.rows = +$('#rows').value; cfg.unit = $('#unit').value;
+  store.set('sym', cfg.sym); store.set('mkt', cfg.mkt); store.set('rows', cfg.rows); store.set('unit', cfg.unit);
+}
+$('#sym').value = cfg.sym; $('#mkt').value = cfg.mkt; $('#rows').value = String(cfg.rows); $('#unit').value = cfg.unit;
+$('#sym').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });  // blur declanșează „change" o singură dată
+$('#sym').addEventListener('change', () => { applyControls(); $('#sym').value = cfg.sym; connect(); });
+$('#mkt').addEventListener('change', () => { applyControls(); connect(); });
+$('#rows').addEventListener('change', () => { applyControls(); buildLadder(); scheduleRender(); });
+$('#unit').addEventListener('change', () => { applyControls(); scheduleRender(); });
+function parseAmount(s){
+  const m = /^\s*\$?\s*([\d.,]+)\s*([kKmM]?)\s*$/.exec(s || '');
+  if (!m) return 0;
+  return (parseFloat(m[1].replace(/,/g, '')) || 0) * ({ k: 1e3, m: 1e6 }[m[2].toLowerCase()] || 1);
+}
+$('#thr').value = cfg.thr > 0 ? String(cfg.thr) : '';
+$('#thr').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('#thr').addEventListener('change', () => {
+  cfg.thr = parseAmount($('#thr').value); store.set('thr', cfg.thr);
+  $('#thr').value = cfg.thr > 0 ? String(cfg.thr) : '';
+  scheduleRender(); dirty.panel = true;
+});
+$('#pause').addEventListener('click', () => { S.paused = !S.paused; $('#pause').textContent = S.paused ? 'Continuă' : 'Pauză'; if (!S.paused) scheduleRender(); });
+
+setInterval(settle, 100);
+setInterval(() => { if (!S.paused && dirty.panel) renderPanel(); tickStatus(); }, 250);
+connect();
+})();
+</script>
+</body>
+</html>
