@@ -4,7 +4,7 @@ Un singur fișier HTML (`index.html`), fără build și fără npm: order book l
 
 - Date: WebSocket public Binance, direct din browser. Nu există cont, cheie sau server.
 - Doar citire. Nu plasează ordine.
-- Hosting: Cloudflare Pages, folderul se publică așa cum e (fără comandă de build).
+- Hosting: GitHub Pages (branch `main`, rădăcina). `_headers` e pregătit pentru Cloudflare Pages, dacă se mută acolo.
 - Pe futures, cartea vine de pe `/public` și tranzacțiile de pe `/market`; pe spot, o singură conexiune.
 
 Nu e sfat financiar.
